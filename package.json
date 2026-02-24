@@ -1,0 +1,12 @@
+{
+  "name": "e-commerce",
+  "version": "1.0.0",
+  "description": "shoping app",
+  "license": "ISC",
+  "author": "anushkagurbe",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}
