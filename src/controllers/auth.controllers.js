@@ -6,7 +6,7 @@ import bcrypt from "bcryptjs";
 
 let cookieOptions = {
     httpOnly: true,
-    strict: true
+    sameSite: "strict"
 }
 
 export let userRegistrationController = async (req, res)=>{
