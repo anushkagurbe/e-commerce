@@ -3,6 +3,7 @@ import { sendRegistrationEmail } from "../services/email.services.js";
 import { generateAccessToken, generateRefreshToken } from "../utils/token.utils.js";
 import { loginSchema, registerSchema } from "../validators/auth.validators.js";
 import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 
 let cookieOptions = {
     httpOnly: true,
@@ -74,5 +75,35 @@ export let userLoginController = async(req, res)=>{
     {
         console.log(error)
         return res.status(500).json({ success: false, message: "Internal server error" })
+    }
+}
+
+
+export let refreshTokenController = async(req, res)=>{
+    try
+    {
+        let refreshToken = req.cookies?.refreshToken;
+        if(!refreshToken)
+        {
+            return res.status(400).json({ success: false, message: "Refresh token not found" });
+        }
+
+        let decodedRefreshToken = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+        let user = await userModel.findById(decodedRefreshToken._id);
+        if(!user || user.refreshToken !== refreshToken)
+        {
+            return res.status(403).json({ success: false, message: "Invalid refresh token" });
+        }
+        let newAccessToken = generateAccessToken(decodedRefreshToken._id);
+        let newRefreshToken = generateRefreshToken(decodedRefreshToken._id, decodedRefreshToken.username);
+
+        await userModel.findByIdAndUpdate(decodedRefreshToken._id, { refreshToken: newRefreshToken });
+        return res.status(200).cookie("accessToken", newAccessToken, cookieOptions).cookie("refreshToken", newRefreshToken, cookieOptions).json({ success: true, message: "Token refreshed successfully" });
+
+    }
+    catch(error)
+    {
+        console.log(error);
+        return res.status(500).json({ success: false, message: "Token invalid or expired" });
     }
 }

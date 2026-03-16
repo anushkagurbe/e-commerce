@@ -6,6 +6,6 @@ export let generateAccessToken =(userId)=>{
 }
 
 export let generateRefreshToken =(userId, username)=>{
-    let token = jwt.sign({_id: userId, username: username}, process.env.REFRESH_TOKEN_SECRET, { expiresIn: "1h" } );
+    let token = jwt.sign({_id: userId, username: username}, process.env.REFRESH_TOKEN_SECRET, { expiresIn: "7d" } );
     return token;
 }
