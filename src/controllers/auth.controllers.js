@@ -1,3 +1,4 @@
+import redis from "../config/redis.js";
 import userModel from "../models/user.model.js";
 import { sendRegistrationEmail } from "../services/email.services.js";
 import { generateAccessToken, generateRefreshToken } from "../utils/token.utils.js";
@@ -68,7 +69,7 @@ export let userLoginController = async(req, res)=>{
         let accessToken = generateAccessToken(isUserExists._id);
         let refreshToken = generateRefreshToken(isUserExists._id, isUserExists.username);
 
-        await userModel.findByIdAndUpdate(isUserExists._id, { refreshToken: refreshToken });
+        await userModel.findByIdAndUpdate(isUserExists._id, { $addToSet: { refreshToken: refreshToken } });
         return res.status(200).cookie("accessToken", accessToken, cookieOptions).cookie("refreshToken", refreshToken, cookieOptions).json({ success: true, message: "User login successfully" });
     }
     catch(error)
@@ -90,14 +91,30 @@ export let refreshTokenController = async(req, res)=>{
 
         let decodedRefreshToken = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
         let user = await userModel.findById(decodedRefreshToken._id);
-        if(!user || user.refreshToken !== refreshToken)
+        let isBlacklisted = await redis.get(`bl_${refreshToken}`);
+        if(isBlacklisted)
+        {
+            return res.status(403).json({ success: false, message: "Token is revoked" });
+        }
+        if(!user || !user.refreshToken.includes(refreshToken))
         {
             return res.status(403).json({ success: false, message: "Invalid refresh token" });
         }
+
+        let decodedToken = jwt.decode(refreshToken)
+        if(decodedToken?.exp)
+        {
+            let ttl = decodedToken.exp - Math.floor(Date.now() / 1000);
+            if(ttl > 0)
+            {
+                await redis.set(`bl_${refreshToken}`, "true", "EX", ttl);
+            }
+        }
+
         let newAccessToken = generateAccessToken(decodedRefreshToken._id);
         let newRefreshToken = generateRefreshToken(decodedRefreshToken._id, decodedRefreshToken.username);
 
-        await userModel.findByIdAndUpdate(decodedRefreshToken._id, { refreshToken: newRefreshToken });
+        await userModel.findByIdAndUpdate(decodedRefreshToken._id, { $pull: { refreshToken: refreshToken }, $addToSet: { refreshToken: newRefreshToken } });
         return res.status(200).cookie("accessToken", newAccessToken, cookieOptions).cookie("refreshToken", newRefreshToken, cookieOptions).json({ success: true, message: "Token refreshed successfully" });
 
     }
@@ -105,5 +122,47 @@ export let refreshTokenController = async(req, res)=>{
     {
         console.log(error);
         return res.status(500).json({ success: false, message: "Token invalid or expired" });
+    }
+}
+
+
+export let logoutController = async(req, res)=>{
+    try
+    {
+        let accessToken = req.cookies?.accessToken || req.header("Authorization")?.replace("Bearer ", "");
+        let refreshToken = req.cookies?.refreshToken;
+        let currentTime = Math.floor(Date.now() / 1000);
+        if(accessToken)
+        {
+            let decodedAccess = jwt.decode(accessToken);
+            if(decodedAccess?.exp && decodedAccess.exp > currentTime)
+            {
+                let ttl = decodedAccess.exp - currentTime;
+                if(ttl > 0)
+                {
+                    await redis.set(`bl_${accessToken}`, "true", "EX", ttl);
+                }
+            }
+        }
+
+        if(refreshToken)
+        {
+            let decodedRefresh = jwt.decode(refreshToken);
+            if(decodedRefresh?.exp && decodedRefresh.exp > currentTime)
+            {
+                let ttl = decodedRefresh.exp - currentTime;
+                if(ttl > 0)
+                {
+                    await redis.set(`bl_${refreshToken}`, "true", "EX", ttl);
+                }
+            }
+        }
+
+        await userModel.findByIdAndUpdate(req.user._id, { $pull: { refreshToken: refreshToken }});
+        return res.status(200).json({ success: true, message: "Logout successful" });
+    }
+    catch(error)
+    {
+        return res.status(500).json({ success: false, message: "Internal server error" });
     }
 }

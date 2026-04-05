@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import "./src/config/redis.js";
 import { dbConnect } from "./src/config/dbConnect.js";
 import authRoutes from "./src/routes/auth.routes.js";
 import categoryRoutes from "./src/routes/category.routes.js";

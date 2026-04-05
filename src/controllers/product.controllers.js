@@ -2,6 +2,8 @@ import { productSchema } from "../validators/product.validators.js"
 import { deleteFromCloudinary, uploadOnCloudinary } from "../config/cloudinary.js";
 import productModel from "../models/product.model.js";
 import mongoose from "mongoose";
+import createCacheKey from "../utils/createCacheKey.js";
+import redis from "../config/redis.js";
 
 export let addProductController = async (req, res)=>{
     try
@@ -103,7 +105,18 @@ export let getAllproductsController = async(req, res)=>{
         let page = Math.max(parseInt(req.query.page) || 1, 1);
         let limit = Math.min(parseInt(req.query.limit) || 10, 50);
 
+        let cacheKey = createCacheKey("products", req.query);
+
+        let cachedData = await redis.get(cacheKey);
+
+        if(cachedData)
+        {
+            return res.status(200).json(JSON.parse(cachedData));
+        }
         let products = await productModel.paginate({}, { page, limit, sort: { createdAt: -1 }, lean: true, populate: { path: "category", select: "category slug" } });
+
+        await redis.set(cacheKey, JSON.stringify(products), "EX", 100);
+
         return res.status(200).json({ success: true, 
             message: "products fetched successfully", 
             data: products.docs,       

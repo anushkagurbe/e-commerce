@@ -26,9 +26,9 @@ let userSchema = mongoose.Schema({
         type: String,
         trim: true
     },
-    refreshToken: {
-        type: String
-    }
+    refreshToken: [
+        String
+    ]
 },
 {
     timestamps: true
